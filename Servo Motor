@@ -1,0 +1,144 @@
+#include <Servo.h>
+
+// Define nomes para as posicoes limite de rotacao da tampa da lixeira
+int const TAMPA_ABERTA = 125;  // posicao aberta
+int const TAMPA_FECHADA = 55;  // tampa fechada
+
+#define ESPERA_ABERTO 500     // tempo padrão para esperar entre leituras do sensor, quando aberta a lixeira
+#define ESPERA_FECHADO 100     // tempo padrão para esperar entre leituras do sensor, quando fechada a lixeira
+
+
+
+
+// Criar os objetos necessarios para controlar servo motores
+Servo tampa;  // cria um objeto servo para controlar um servo
+
+int pos = 0;           // variavel para armazenar a posicao dos servos
+int lastPos = 0;       // variavel temporaria de posicao do servo
+int const RAPIDO = 5;  // atraso de 5 milissegundos
+int const MEDIO = 10;  // atraso de 10 milissegundos
+int const LENTO = 15;  // atraso de 15 milissegundos
+
+int atraso = MEDIO;    // configurar a velocidade de movimentacao da tampa
+
+// Define pinos que usaremos para o sensor ultrassonico
+int const trigPin = 10; // disparo do sensor (trigger)
+int const echoPin = 9;  // leitura do eco do sensor (echo)
+
+// Cria variaveis para armazenar a duracao do eco do sensor e a distancia que vamos calcular
+int duration, distance, lastDuration; // Duration will be the input pulse width and distance will be the distance to the obstacle in centimeters
+
+// Define pino para acionar o buzzer (opcional no projeto da lixeira)
+int const buzzPin = 2;
+
+// Define nomes para distancias padrao para as quais faremos a tampa ser acionada
+int const DIST_1 = 15;   // longe - acima disso, pode fechar a tampa
+
+void setup() {
+
+  pinMode(LED_BUILTIN, OUTPUT);  // inicializa o pino digital LED_BUILTIN (13) como saida (para comandar o LED)
+  tampa.attach(3);               // Associa o servo no pino 3 (digital com PWM) ao objeto servo da tampa
+  
+  pinMode(trigPin, OUTPUT);      // pino de disparo do sensor de distancia -- configurado como saida (OUTPUT)
+  pinMode(echoPin, INPUT);       // pino de leitura da duracao do eco do sensor -- configurado entrada (INPUT)
+  
+  pinMode(buzzPin, OUTPUT);      // se usar um buzzer, configurar o pino digital como OUTPUT para controla-lo
+
+// fecha a tampa (para garantir...)
+
+  MoveTampa(TAMPA_FECHADA);      // vamos comecar com a tampa da lixeira fechada
+
+  // Inicializa comunicacao serial com o computador (para debugar, opcional):
+  Serial.begin(9600);
+  
+} // fim da funcao setup
+
+void loop() {
+    
+  lastDuration = duration; // armazena ultima leitura do sensor para suavizacao
+  
+  // Para disparar uma leitura de distancia no sensor ultrassonico, mandamos um pulso de 5v (HIGH) 
+  // com duracao de 1 milissegundo no pino que chamamos de trigPin (pino de gatilho),
+  // desligando o pulso (baixando para LOW) logo em seguida
+  digitalWrite(trigPin, HIGH); delay(1); digitalWrite(trigPin, LOW);
+
+  // Logo em seguida lemos o que o tempo que o eco do sonar levou para retornar,
+  // usando para isso uma leitura de tempo (duration) no pino que chamamos de echoPin
+  duration = pulseIn(echoPin, HIGH); // Medimos o pulso de entrada no pino de eco
+  if(duration < 5) {
+    duration = lastDuration; // se vier alguma leitura fora de faixa, preserva a anterior
+  }
+  if(duration > 5000){
+    duration = 5000; // se vier alguma leitura acima de faixa, segura no limite 5000
+  }
+  
+      distance = (duration/2) / 29.1;    // A distancia eh a metade da duracao, dividida por 29.1 (segundo datasheet do sensor)
+      // envia as distancias pela porta serial ao computador (para debugar)
+      Serial.println(distance);
+      
+      delay(1);        // delay entre as leituras, para maior estabilidade
+
+
+  // Agora vamos decidir o que fazer de acordo com a distancia lida pelo sensor
+  //
+ 
+     if (distance <= DIST_1 && distance >= 0)
+    // ESTADO: MÃO OU OBJETO PERTO DA LIXEIRA
+    // ABRIR A LIXEIRA
+    {
+        MoveTampa(TAMPA_ABERTA);
+        beep();
+        delay(ESPERA_ABERTO);
+        
+    }
+    else
+    // ESTADO: NENHUM OBJETO PROXIMO
+    // FECHAR A LIXEIRA
+    {
+      MoveTampa(TAMPA_FECHADA);
+      delay(ESPERA_FECHADO);    
+    }
+  
+} // fim da funcao loop
+
+
+void MoveTampa(int posicaoFinal){
+  sweepServo(posicaoFinal, atraso);
+}
+
+void sweepServo (int endPos, int sweepDelay)
+{
+  int sweepPos;
+  int beginPos;
+
+  beginPos = lastPos;
+  
+  if (beginPos < 0) {
+    beginPos = 0;
+  }
+  if (endPos > 179) {
+    endPos = 180;
+  }
+
+  if(beginPos > endPos) {
+      for (sweepPos = beginPos; sweepPos >= endPos; sweepPos -= 1) // reduz angulo
+      {
+        tampa.write(sweepPos);
+        delay(sweepDelay);
+      } 
+
+  } else {
+      for (sweepPos = beginPos; sweepPos <= endPos; sweepPos += 1) 
+      {
+        tampa.write(sweepPos);
+        delay(sweepDelay);
+      }
+  }
+  lastPos = endPos;
+}
+
+
+void beep (){
+  digitalWrite(buzzPin, HIGH); delay(15); digitalWrite(buzzPin, LOW); // beep
+  
+}
